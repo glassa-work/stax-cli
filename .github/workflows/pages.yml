@@ -1,0 +1,61 @@
+name: Pages
+
+# Builds the docs site from the PRIVATE source repo (glassa-work/stax) and
+# deploys it to GitHub Pages for this public repo.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: "Ref of glassa-work/stax to build docs from"
+        required: true
+        default: main
+
+permissions:
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the private source
+        uses: actions/checkout@v4
+        with:
+          repository: glassa-work/stax
+          ref: ${{ inputs.source_ref || 'main' }}
+          token: ${{ secrets.STAX_SOURCE_PAT }}
+
+      - name: Point the docs build at this Pages host
+        run: |
+          sed -i 's|site: "https://elloloop.github.io"|site: "https://glassa-work.github.io"|' docs-site/astro.config.mjs
+          sed -i 's|base: "/stax"|base: "/stax-cli"|' docs-site/astro.config.mjs
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: docs-site/pnpm-lock.yaml
+
+      - name: Build the docs site
+        run: |
+          pnpm --dir docs-site install --frozen-lockfile
+          pnpm --dir docs-site build
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
