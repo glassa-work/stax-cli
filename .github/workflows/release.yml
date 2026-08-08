@@ -53,9 +53,6 @@ jobs:
           token: ${{ secrets.STAX_SOURCE_PAT }}
           fetch-depth: 0 # goreleaser wants history for the changelog
 
-      - name: Stamp the release version into the build clone
-        run: git tag "${{ steps.tag.outputs.name }}" || true
-
       - uses: actions/setup-go@v5
         with:
           go-version-file: platform/cli-go/go.mod
@@ -64,11 +61,19 @@ jobs:
         working-directory: platform/cli-go
         run: go test ./... -count=1
 
-      - name: Retarget goreleaser at this repo (no source changes upstream)
+      - name: Retarget goreleaser at this repo + stamp the version
         run: |
+          # Retarget the release at stax-cli and drop the brews section —
+          # goreleaser refuses a dirty tree, so commit the patch and tag the
+          # resulting commit (tag first and the version becomes v*-1-g<sha>).
           sed -i 's/name: homebrew-stax/name: stax-cli/' .goreleaser.yaml
           awk '/^brews:/{stop=1} !stop' .goreleaser.yaml > .goreleaser.stax-cli.yaml
           mv .goreleaser.stax-cli.yaml .goreleaser.yaml
+          git config user.email "release@glassawork.bot"
+          git config user.name "stax-cli release"
+          git add .goreleaser.yaml
+          git commit -qm "ci: retarget release at stax-cli"
+          git tag "${{ steps.tag.outputs.name }}"
 
       - name: Release
         uses: goreleaser/goreleaser-action@v6
